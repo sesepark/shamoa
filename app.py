@@ -338,37 +338,35 @@ from difflib import SequenceMatcher
 with tab1:
     yes_programs = df[df['status'] == 'YES']
     
-    # [라이브러리 가져오기]
     import re
     from difflib import SequenceMatcher
 
-    # --- [강력한 중복 제거 알고리즘 시작] ---
+    # --- [초강력 중복 제거 알고리즘 V2] ---
     unique_programs = []
 
-    # 1. 텍스트 정제 함수 (특수문자 제거 및 소문자화)
+    # 1. 텍스트 정제 함수 (특수문자 보존!)
     def clean_text_for_compare(text):
-        # 괄호와 그 안의 내용 제거 ([...], (...))
+        # 괄호와 그 안의 내용만 제거 ([...], (...))
         text = re.sub(r'\[.*?\]', '', text)
         text = re.sub(r'\(.*?\)', '', text)
-        # 특수문자 제거하고 알파벳/숫자만 남김, 소문자로 변환
-        text = re.sub(r'[^a-zA-Z0-9가-힣\s]', '', text).strip().lower()
+        # 공백 제거 및 소문자화 (이제 알파벳/숫자 외의 문자도 살려둡니다)
+        text = text.replace(" ", "").lower()
         return text
 
-    # 2. 유사도 측정 함수 (두 문장이 얼마나 비슷한지 0~1 사이 점수로 반환)
+    # 2. 유사도 측정
     def get_similarity(a, b):
         return SequenceMatcher(None, a, b).ratio()
 
-    # 3. 핵심 단어(토큰) 교집합 비율 확인 함수
+    # 3. 핵심 단어 교집합 (기준 완화: 1개만 겹쳐도 의심)
     def get_token_overlap(a, b):
-        # 의미 없는 단어 제거 (불용어)
-        stop_words = {'university', 'college', 'school', 'program', 'of', 'the', 'and', 'for', 'in', '2025', '2026', '모집', '공고', '안내', '참가자'}
+        stop_words = {'university', 'college', 'school', 'program', 'of', 'the', 'and', 'for', 'in', '2025', '2026', 'summer', 'winter', 'session', '참가자', '모집', '공고', '안내'}
         
+        # 띄어쓰기 기준으로 단어 분리
         tokens_a = set(a.split()) - stop_words
         tokens_b = set(b.split()) - stop_words
         
         if not tokens_a or not tokens_b: return 0
         
-        # 두 제목에서 겹치는 '핵심 단어' 개수 확인
         intersection = tokens_a.intersection(tokens_b)
         return len(intersection)
 
@@ -379,32 +377,34 @@ with tab1:
         for existing in unique_programs:
             existing_clean = clean_text_for_compare(existing['title'])
             
-            # [판단 로직 1] 기존의 포함 관계 확인 (가장 기본)
+            # [비교 1] 포함 관계
             cond1 = (current_clean in existing_clean) or (existing_clean in current_clean)
             
-            # [판단 로직 2] 문장 유사도가 60% 이상이면 중복 (순서가 약간 바뀐 경우)
-            cond2 = get_similarity(current_clean, existing_clean) > 0.6
+            # [비교 2] 유사도 기준을 0.6 -> 0.4로 대폭 낮춤 (조금만 비슷해도 합침)
+            cond2 = get_similarity(current_clean, existing_clean) > 0.4
             
-            # [판단 로직 3] 핵심 키워드가 2개 이상 겹치면 중복 (Tübingen 같은 고유명사 캐치)
-            cond3 = get_token_overlap(current_clean, existing_clean) >= 2
+            # [비교 3] 핵심 단어가 1개 이상 겹치면 중복 간주 (Tübingen 하나만 겹쳐도 잡음)
+            cond3 = get_token_overlap(row['title'].lower(), existing['title'].lower()) >= 1
             
             if cond1 or cond2 or cond3:
                 is_duplicate = True
                 
-                # [덮어쓰기 로직: 정보가 더 많은 쪽을 살림]
-                # 1. 기존 정보가 '단과대'고 새 정보가 '본부(OIA)'면 -> 새 것으로 교체
-                if "OIA" in row['site_name'] and "OIA" not in existing['site_name']:
-                     existing.update(row)
-                
-                # 2. (선택) 제목 길이가 짧은 게 더 깔끔하면 교체
+                # [합치기 전략]
+                # 둘 다 OIA라면? -> 제목 긴 거(자세한 거) or 짧은 거(깔끔한 거) 선택
+                # 여기선 제목이 '짧은 쪽'을 선택해서 깔끔하게 보이게 설정
                 if len(row['title']) < len(existing['title']):
                     existing['title'] = row['title']
-                    
+                    existing['link'] = row['link'] # 링크도 갱신
+                
+                # 만약 기존엔 이미지가 없었는데, 새것에 이미지가 있다면 이미지 업데이트
+                if (pd.isna(existing.get('img_url')) or existing.get('img_url') == '') and (not pd.isna(row.get('img_url')) and row.get('img_url') != ''):
+                    existing['img_url'] = row['img_url']
+
                 break
         
         if not is_duplicate:
             unique_programs.append(row)
-    # --- [중복 제거 알고리즘 끝] ---
+    # --- [알고리즘 끝] ---
 
     st.markdown(f"<h4 style='margin-bottom:20px;'>✨ AI가 엄선한 알짜배기 공지를 모았어요 ({len(unique_programs)}건)</h4>", unsafe_allow_html=True)
 

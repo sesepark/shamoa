@@ -4,21 +4,33 @@ import pandas as pd
 import os
 import textwrap  # [추가] HTML 들여쓰기 문제 해결용 도구
 from openai import OpenAI  # 👈 이 줄이 꼭 필요합니다!
-import streamlit as st 
-# (원래 있던 import 코드들...)
 
-# 👇 [이 코드를 복사해서 붙여넣으세요] 👇
+import streamlit as st
+# (다른 import 들이 있다면 그대로 두세요)
+
+# 👇 [여기부터 복사해서 붙여넣기] 👇
 st.markdown("""
     <style>
-    /* 1. 햄버거 메뉴(우측 상단 점 3개) 없애기 (선택사항) */
-    #MainMenu {visibility: hidden;}
+    /* 1. 상단 헤더(빨간 줄, 메뉴 등) 없애기 */
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
     
-    /* 2. 하단 'Made with Streamlit' 및 빨간 배 아이콘 등 푸터 없애기 */
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* 2. 하단 푸터(Hosted with Streamlit, Made with Streamlit) 없애기 */
+    footer {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* 3. (혹시 안 없어지면) 하단 고정 바 강제 숨김 */
+    .stApp > footer {
+        display: none !important;
+    }
     
-    /* 3. 모바일 등에서 보이는 뷰어 배지 숨기기 */
-    .stApp > header {visibility: hidden;}
+    /* 4. 맨 위 햄버거 메뉴 버튼 숨기기 */
+    #MainMenu {
+        visibility: hidden !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 # 👆 [여기까지] 👆

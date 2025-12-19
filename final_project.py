@@ -34,9 +34,11 @@ HEADERS = {
 SITES = [
     {"name": "서울대 OIA", "url": "https://oia.snu.ac.kr/notice-all?combine=&page=0"},
     {"name": "서울대 OIA", "url": "https://oia.snu.ac.kr/notice-all?combine=&page=1"},
+    {"name": "서울대 OIA", "url": "https://oia.snu.ac.kr/notice-all?combine=&page=2"},
     {"name": "자유전공학부", "url": "https://cls.snu.ac.kr/notice/?pageid=1&mod=list"},
     {"name": "자유전공학부", "url": "https://cls.snu.ac.kr/notice/?pageid=2&mod=list"},
     {"name": "서울대 SR", "url": "https://snusr.snu.ac.kr/community/notice?page=1"},
+    {"name": "서울대 SR", "url": "https://snusr.snu.ac.kr/community/notice?page=2"},
     {"name": "인문대학", "url": "https://humanities.snu.ac.kr/community/notice"},
     {"name": "공과대학", "url": "https://eng.snu.ac.kr/snu/bbs/BMSR00004/list.do?menuNo=200176"},
     {"name": "자연과학대", "url": "https://science.snu.ac.kr/news/announcement"},
@@ -85,10 +87,9 @@ def extract_text_from_hwp(hwp_url):
         try:
             ole = olefile.OleFileIO(f)
         except:
-            return "" # HWP 포맷이 아니거나 깨진 경우
+            return "" 
 
         text = ""
-        # HWP 5.0 형식은 'BodyText/SectionX' 안에 본문이 들어있습니다.
         dirs = ole.listdir()
         sections = [d for d in dirs if d[0] == "BodyText"]
         
@@ -97,21 +98,15 @@ def extract_text_from_hwp(hwp_url):
 
         for section in sections:
             try:
-                # 스트림 읽기
                 stream = ole.openstream(section)
                 data = stream.read()
                 
                 # HWP는 내용을 zlib으로 압축해서 저장함 -> 압축 해제
                 unpacked_data = zlib.decompress(data, -15)
                 
-                # 압축 풀린 데이터는 UTF-16LE 인코딩임
-                # 다만 제어 문자가 섞여 있어서, 유니코드 문자열로 변환 후 정제
                 decoded_text = unpacked_data.decode('utf-16-le', errors='ignore')
                 
-                # 특수문자/제어문자가 많으므로, 한글/영어/숫자/기본문장부호 정도만 남기고 필터링하거나
-                # LLM에게는 그냥 줘도 됨. 여기서는 가독성을 위해 간단히 정제.
                 # (실제 HWP 바이너리 구조를 완벽히 파싱하려면 복잡하므로, 텍스트 덤프 방식 사용)
-                
                 # 텍스트 덩어리만 추출 (간이 방식)
                 clean_text = ""
                 for char in decoded_text:
@@ -136,7 +131,7 @@ def extract_text_from_pdf(pdf_url):
         f = io.BytesIO(response.content)
         text = ""
         with pdfplumber.open(f) as pdf:
-            for page in pdf.pages: # 전체 페이지 읽기
+            for page in pdf.pages: 
                 extracted = page.extract_text()
                 if extracted:
                     text += extracted + "\n"
@@ -216,7 +211,7 @@ def get_full_content(url):
 
 
 
-# [수정] period 컬럼 추가
+
 def init_db():
     conn = sqlite3.connect('snu_programs.db')
     c = conn.cursor()
@@ -229,14 +224,14 @@ def init_db():
                   reason TEXT, 
                   period TEXT,  
                   content TEXT, 
-                  crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP)''') # period TEXT 추가됨
+                  crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP)''') 
     conn.commit()
     conn.close()
 
 
 
 
-# [수정] period 인자 추가 및 쿼리 수정
+
 def save_to_db(site_name, title, link, status, target, reason, period, content):
     try:
         conn = sqlite3.connect('snu_programs.db')
@@ -258,7 +253,7 @@ def save_to_db(site_name, title, link, status, target, reason, period, content):
 def analyze_program(title, content, images=[]): # <--- 인자에 images 추가됨
     """ LLM에게 판단 요청 (텍스트 + 이미지) """
     
-    # [기존 프롬프트 유지]
+    
     prompt_text = f"""
     You are an AI assistant for Seoul National University students.
     Your goal is to identify **"Short-term Overseas Programs"** from university notices.
@@ -458,7 +453,7 @@ def crawl_site(site_info):
 
 
 if __name__ == "__main__":
-    init_db()  # <--- [추가] 프로그램 시작 전 DB 초기화
+    init_db()  # <--- 프로그램 시작 전 DB 초기화
     print("=== [PDF/Vision 분석 + DB 저장] 서울대 해외 프로그램 크롤러 ===")
     
     for site in SITES:

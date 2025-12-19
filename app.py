@@ -5,39 +5,6 @@ import os
 import textwrap  # [추가] HTML 들여쓰기 문제 해결용 도구
 from openai import OpenAI  # 👈 이 줄이 꼭 필요합니다!
 
-import streamlit as st
-# (다른 import 들이 있다면 그대로 두세요)
-
-# 👇 [여기부터 복사해서 붙여넣기] 👇
-st.markdown("""
-    <style>
-    /* 1. 상단 헤더(빨간 줄, 메뉴 등) 없애기 */
-    header[data-testid="stHeader"] {
-        display: none !important;
-    }
-    
-    /* 2. 하단 푸터(Hosted with Streamlit, Made with Streamlit) 없애기 */
-    footer {
-        display: none !important;
-        visibility: hidden !important;
-    }
-
-    /* 3. (혹시 안 없어지면) 하단 고정 바 강제 숨김 */
-    .stApp > footer {
-        display: none !important;
-    }
-    
-    /* 4. 맨 위 햄버거 메뉴 버튼 숨기기 */
-    #MainMenu {
-        visibility: hidden !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-# 👆 [여기까지] 👆
-
-# (아래는 원래 작성하신 코드들...)
-
-
 
 
 # [추가할 부분] OpenAI 클라이언트 설정
@@ -362,7 +329,8 @@ with tab0:
 
 
 
-import re  # 정규표현식(문자열 청소 도구) 추가
+import re
+from difflib import SequenceMatcher
 
 # ----------------------------------------------------------------
 # [Tab 1] YES인 프로그램 (강력한 중복 제거 적용)
@@ -370,39 +338,65 @@ import re  # 정규표현식(문자열 청소 도구) 추가
 with tab1:
     yes_programs = df[df['status'] == 'YES']
     
+    # [라이브러리 가져오기]
+    import re
+    from difflib import SequenceMatcher
+
     # --- [강력한 중복 제거 알고리즘 시작] ---
     unique_programs = []
 
-    # 제목 청소 함수 (대괄호, 괄호, 특수문자, 공백 싹 제거)
-    def clean_title(text):
-        # 1. [괄호] 안의 내용 제거
-        text = re.sub(r'\[.*?\]', '', text) 
+    # 1. 텍스트 정제 함수 (특수문자 제거 및 소문자화)
+    def clean_text_for_compare(text):
+        # 괄호와 그 안의 내용 제거 ([...], (...))
+        text = re.sub(r'\[.*?\]', '', text)
         text = re.sub(r'\(.*?\)', '', text)
-        # 2. "안내", "모집", "공고" 같은 흔한 단어 제거 (선택사항, 필요시 주석 해제)
-        # text = text.replace('안내', '').replace('모집', '').replace('공고', '')
-        # 3. 모든 공백 및 특수문자 제거 (오직 글자만 남김)
-        text = "".join(filter(str.isalnum, text))
+        # 특수문자 제거하고 알파벳/숫자만 남김, 소문자로 변환
+        text = re.sub(r'[^a-zA-Z0-9가-힣\s]', '', text).strip().lower()
         return text
+
+    # 2. 유사도 측정 함수 (두 문장이 얼마나 비슷한지 0~1 사이 점수로 반환)
+    def get_similarity(a, b):
+        return SequenceMatcher(None, a, b).ratio()
+
+    # 3. 핵심 단어(토큰) 교집합 비율 확인 함수
+    def get_token_overlap(a, b):
+        # 의미 없는 단어 제거 (불용어)
+        stop_words = {'university', 'college', 'school', 'program', 'of', 'the', 'and', 'for', 'in', '2025', '2026', '모집', '공고', '안내', '참가자'}
+        
+        tokens_a = set(a.split()) - stop_words
+        tokens_b = set(b.split()) - stop_words
+        
+        if not tokens_a or not tokens_b: return 0
+        
+        # 두 제목에서 겹치는 '핵심 단어' 개수 확인
+        intersection = tokens_a.intersection(tokens_b)
+        return len(intersection)
 
     for _, row in yes_programs.iterrows():
         is_duplicate = False
-        current_clean = clean_title(row['title']) # 청소된 제목 (예: "태국단기연수참가자")
+        current_clean = clean_text_for_compare(row['title'])
         
         for existing in unique_programs:
-            existing_clean = clean_title(existing['title'])
+            existing_clean = clean_text_for_compare(existing['title'])
             
-            # [비교 로직 1] 청소된 제목이 서로 포함되는 관계면 중복!
-            # (짧은 제목이 긴 제목 안에 쏙 들어가면 같은 글임)
-            if (current_clean in existing_clean) or (existing_clean in current_clean):
+            # [판단 로직 1] 기존의 포함 관계 확인 (가장 기본)
+            cond1 = (current_clean in existing_clean) or (existing_clean in current_clean)
+            
+            # [판단 로직 2] 문장 유사도가 60% 이상이면 중복 (순서가 약간 바뀐 경우)
+            cond2 = get_similarity(current_clean, existing_clean) > 0.6
+            
+            # [판단 로직 3] 핵심 키워드가 2개 이상 겹치면 중복 (Tübingen 같은 고유명사 캐치)
+            cond3 = get_token_overlap(current_clean, existing_clean) >= 2
+            
+            if cond1 or cond2 or cond3:
                 is_duplicate = True
                 
-                # [덮어쓰기 로직]
-                # 1. 기존 것이 단과대(농생대 등)이고, 새 것이 본부(OIA)면 -> 새 것으로 교체 (OIA 우선)
-                # 2. 제목 길이가 더 짧고 깔끔한 쪽을 선호한다면 -> 길이 비교 로직 추가 가능
+                # [덮어쓰기 로직: 정보가 더 많은 쪽을 살림]
+                # 1. 기존 정보가 '단과대'고 새 정보가 '본부(OIA)'면 -> 새 것으로 교체
                 if "OIA" in row['site_name'] and "OIA" not in existing['site_name']:
-                     existing.update(row) # OIA 정보로 덮어씌움
+                     existing.update(row)
                 
-                # (옵션) 제목이 더 깔끔한(짧은) 걸로 보여주고 싶을 때
+                # 2. (선택) 제목 길이가 짧은 게 더 깔끔하면 교체
                 if len(row['title']) < len(existing['title']):
                     existing['title'] = row['title']
                     

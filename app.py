@@ -4,6 +4,29 @@ import pandas as pd
 import os
 import textwrap  # [추가] HTML 들여쓰기 문제 해결용 도구
 from openai import OpenAI  # 👈 이 줄이 꼭 필요합니다!
+import streamlit as st 
+# (원래 있던 import 코드들...)
+
+# 👇 [이 코드를 복사해서 붙여넣으세요] 👇
+st.markdown("""
+    <style>
+    /* 1. 햄버거 메뉴(우측 상단 점 3개) 없애기 (선택사항) */
+    #MainMenu {visibility: hidden;}
+    
+    /* 2. 하단 'Made with Streamlit' 및 빨간 배 아이콘 등 푸터 없애기 */
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* 3. 모바일 등에서 보이는 뷰어 배지 숨기기 */
+    .stApp > header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
+# 👆 [여기까지] 👆
+
+# (아래는 원래 작성하신 코드들...)
+
+
+
 
 # [추가할 부분] OpenAI 클라이언트 설정
 # "sk-..." 부분에 본인의 실제 API 키를 넣으세요.

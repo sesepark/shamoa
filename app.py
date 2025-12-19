@@ -341,62 +341,68 @@ with tab1:
     import re
     from difflib import SequenceMatcher
 
-    # --- [초강력 중복 제거 알고리즘 V2] ---
+    # --- [스마트 키워드 중복 제거 V3] ---
     unique_programs = []
 
-    # 1. 텍스트 정제 함수 (특수문자 보존!)
-    def clean_text_for_compare(text):
-        # 괄호와 그 안의 내용만 제거 ([...], (...))
+    # 1. 텍스트 정제 (특수문자 제거, 소문자화)
+    def clean_text_basic(text):
+        # 괄호 제거
         text = re.sub(r'\[.*?\]', '', text)
         text = re.sub(r'\(.*?\)', '', text)
-        # 공백 제거 및 소문자화 (이제 알파벳/숫자 외의 문자도 살려둡니다)
-        text = text.replace(" ", "").lower()
+        # 알파벳, 한글, 숫자 외 제거 후 소문자
+        text = re.sub(r'[^a-zA-Z0-9가-힣\s]', ' ', text).lower()
         return text
 
-    # 2. 유사도 측정
-    def get_similarity(a, b):
-        return SequenceMatcher(None, a, b).ratio()
-
-    # 3. 핵심 단어 교집합 (기준 완화: 1개만 겹쳐도 의심)
-    def get_token_overlap(a, b):
-        stop_words = {'university', 'college', 'school', 'program', 'of', 'the', 'and', 'for', 'in', '2025', '2026', 'summer', 'winter', 'session', '참가자', '모집', '공고', '안내'}
+    # 2. 핵심 키워드 추출 (흔한 단어는 다 버리고 '고유명사'만 남김)
+    def get_meaningful_keywords(text):
+        # 여기에 '무시할 단어들'을 다 넣습니다. (나라/대학 이름 빼고 다 넣음)
+        stop_words = {
+            # 영어 흔한 단어
+            'university', 'univ', 'college', 'school', 'institute', 'academy',
+            'program', 'programme', 'summer', 'winter', 'fall', 'spring', 'session', 'term', 'semester',
+            'short', 'global', 'international', 'abroad', 'exchange', 'culture', 'cultural', 'language',
+            'application', 'apply', 'notice', 'announcement', 'recruitment', 'call', 'for', 'participants',
+            'the', 'of', 'in', 'at', 'to', 'and', 'with', 'by', '2024', '2025', '2026',
+            # 한국어 흔한 단어
+            '대학교', '대학', '학교', '프로그램', '썸머', '윈터', '하계', '동계', '계절', '학기',
+            '단기', '연수', '파견', '해외', '국제', '문화', '체험', '교류', '언어',
+            '모집', '공고', '안내', '참가자', '신청', '선발', '과정'
+        }
         
-        # 띄어쓰기 기준으로 단어 분리
-        tokens_a = set(a.split()) - stop_words
-        tokens_b = set(b.split()) - stop_words
+        cleaned = clean_text_basic(text)
+        words = set(cleaned.split())
         
-        if not tokens_a or not tokens_b: return 0
-        
-        intersection = tokens_a.intersection(tokens_b)
-        return len(intersection)
+        # 불용어(stop_words)에 없는 단어 & 2글자 이상인 단어만 남김 (이게 진짜 알맹이)
+        meaningful_words = {w for w in words if w not in stop_words and len(w) > 1}
+        return meaningful_words
 
     for _, row in yes_programs.iterrows():
         is_duplicate = False
-        current_clean = clean_text_for_compare(row['title'])
+        current_keywords = get_meaningful_keywords(row['title'])
         
         for existing in unique_programs:
-            existing_clean = clean_text_for_compare(existing['title'])
+            existing_keywords = get_meaningful_keywords(existing['title'])
             
-            # [비교 1] 포함 관계
-            cond1 = (current_clean in existing_clean) or (existing_clean in current_clean)
+            # [핵심 로직] 알맹이 키워드가 하나라도 겹치면 중복으로 간주!
+            # 예: A(Tübingen, Summer) vs B(Univ, Tübingen) -> 'Tübingen'이 겹침 -> 중복!
+            # 예: A(Berlin, Tech) vs B(Paris, Art) -> 겹치는 게 없음 -> 다른 글!
+            intersection = current_keywords.intersection(existing_keywords)
             
-            # [비교 2] 유사도 기준을 0.6 -> 0.4로 대폭 낮춤 (조금만 비슷해도 합침)
-            cond2 = get_similarity(current_clean, existing_clean) > 0.4
-            
-            # [비교 3] 핵심 단어가 1개 이상 겹치면 중복 간주 (Tübingen 하나만 겹쳐도 잡음)
-            cond3 = get_token_overlap(row['title'].lower(), existing['title'].lower()) >= 1
-            
-            if cond1 or cond2 or cond3:
+            # 교집합이 있으면 중복 (단, 키워드가 아예 없는 경우 방지)
+            if len(intersection) >= 1:
                 is_duplicate = True
                 
                 # [합치기 전략]
-                # 둘 다 OIA라면? -> 제목 긴 거(자세한 거) or 짧은 거(깔끔한 거) 선택
-                # 여기선 제목이 '짧은 쪽'을 선택해서 깔끔하게 보이게 설정
+                # 1. OIA 우선 업데이트
+                if "OIA" in row['site_name'] and "OIA" not in existing['site_name']:
+                     existing.update(row)
+                
+                # 2. 제목 짧은 걸로 통일 (깔끔하게)
                 if len(row['title']) < len(existing['title']):
                     existing['title'] = row['title']
-                    existing['link'] = row['link'] # 링크도 갱신
+                    existing['link'] = row['link'] # 링크도 같이 바꿈
                 
-                # 만약 기존엔 이미지가 없었는데, 새것에 이미지가 있다면 이미지 업데이트
+                # 3. 이미지 업데이트 (기존 거 없으면 새 걸로)
                 if (pd.isna(existing.get('img_url')) or existing.get('img_url') == '') and (not pd.isna(row.get('img_url')) and row.get('img_url') != ''):
                     existing['img_url'] = row['img_url']
 
